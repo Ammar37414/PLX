@@ -1,6 +1,5 @@
 from flask import Flask, render_template, request, jsonify, redirect, url_for
 from flask_sqlalchemy import SQLAlchemy
-from flask_socketio import SocketIO, emit
 from datetime import datetime, timedelta
 import time
 import threading
@@ -32,23 +31,21 @@ app.config['SECRET_KEY'] = os.getenv("SECRET_KEY", "psx-stock-tracker-secret")
 app.config['SQLALCHEMY_DATABASE_URI'] = os.getenv("DATABASE_URL", "sqlite:///alerts.db")
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
-# Initialize SocketIO
-socketio = SocketIO(app, cors_allowed_origins="*", async_mode='threading')
-
 # ===== DATABASE MODELS =====
 from models import db, StockAlert, Company, Recipient, AlertTemplate, AlertLog
 db.init_app(app)
 
-# ===== PSX WEBSOCKET MONITOR =====
-from websocket_monitor import PSXWebSocketMonitor
+# ===== PSX REST MONITOR =====
+from rest_monitor import PSXRestMonitor
 
-# Initialize WebSocket monitor
-ws_monitor = PSXWebSocketMonitor()
-logger.info("WebSocket monitor initialized")
+# Initialize REST monitor
+ws_monitor = PSXRestMonitor()
+logger.info("REST monitor initialized")
 
 # ===== EMAIL CONFIG =====
 from email_config import EmailConfig
 from email_service import EmailService
+from email_sender import send_alert_email
 
 # ===== FLASK ROUTES =====
 @app.route('/')
@@ -215,7 +212,6 @@ def health_check():
     return jsonify({
         'status': 'healthy',
         'timestamp': datetime.now().isoformat(),
-        'websocket_connected': stats.get('connected', False),
         'cached_symbols': stats.get('cached_symbols', 0),
         'active_alerts': StockAlert.query.filter_by(is_active=True).count()
     })
@@ -543,42 +539,9 @@ def send_bulk_alert():
         db.session.rollback()
         return jsonify({'error': str(e)}), 400
 
-# ===== SOCKETIO EVENTS =====
-@socketio.on('connect')
-def handle_connect():
-    """Client connected to SocketIO"""
-    logger.info("Client connected to SocketIO")
-    emit('connection_status', {'status': 'connected', 'timestamp': datetime.now().isoformat()})
-
-@socketio.on('disconnect')
-def handle_disconnect():
-    """Client disconnected from SocketIO"""
-    logger.info("Client disconnected from SocketIO")
-
-@socketio.on('request_prices')
-def handle_request_prices():
-    """Client requested current prices"""
-    prices = ws_monitor.get_all_prices()
-    emit('price_update', prices)
-
 # ===== BACKGROUND TASKS =====
-def broadcast_price_updates():
-    """Broadcast price updates to all connected clients"""
-    with app.app_context():
-        while True:
-            try:
-                time.sleep(2)  # Broadcast every 2 seconds
-                prices = ws_monitor.get_all_prices()
-                
-                # Broadcast to all connected clients
-                socketio.emit('price_update', prices, namespace='/')
-                
-            except Exception as e:
-                logger.error(f"Broadcast error: {e}")
-                time.sleep(5)
-
 def check_alerts():
-    """Check alerts against WebSocket prices"""
+    """Check alerts against REST prices"""
     with app.app_context():
         time.sleep(10)  # Initial delay
         
@@ -624,20 +587,20 @@ def check_alerts():
                                     direction = 'up'
                                     logger.info(f"🚨 ALERT: {alert.stock_symbol} surged {change_percent:+.2f}% in {_MONITOR_WINDOW//60} mins (Value: Rs. {traded_value:,.0f})")
                                     
-                                    # Prepare email data for frontend
-                                    email_params = EmailConfig.create_alert_email_params(
-                                        alert.email_address,
-                                        alert.stock_symbol,
-                                        current_price,
-                                        old_price,
-                                        change_percent,
-                                        _ALERT_THRESHOLD,
-                                        direction,
-                                        volume
-                                    )
-                                    
-                                    # Broadcast alert to frontend (EmailJS will send from browser)
-                                    socketio.emit('trigger_email_alert', email_params, namespace='/')
+                                    # Send email directly
+                                    try:
+                                        send_alert_email(
+                                            to_email=alert.email_address,
+                                            symbol=alert.stock_symbol,
+                                            current_price=current_price,
+                                            base_price=old_price,
+                                            change_percent=change_percent,
+                                            direction=direction,
+                                            traded_value=traded_value
+                                        )
+                                        logger.info(f"✅ Alert email sent to {alert.email_address} via Resend")
+                                    except Exception as e:
+                                        logger.error(f"❌ Failed to send alert email: {e}")
                                     
                                     # Deactivate
                                     alert.is_active = False
@@ -659,25 +622,22 @@ def check_alerts():
 def print_startup_banner():
     """Print fancy startup banner"""
     print("\n" + "="*70)
-    print("PSX STOCK TRACKER - LIVE WEBSOCKET MONITOR".center(70))
+    print("PSX STOCK TRACKER - LIVE REST MONITOR".center(70))
     print("="*70)
     print(f"Server Time: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
     print(f"Database: {app.config['SQLALCHEMY_DATABASE_URI']}")
     print("="*70)
     print("Database initialized")
-    print("WebSocket monitor started")
-    print("SocketIO server ready")
-    print("Email alerts configured (EmailJS)")
+    print("REST monitor started")
     print("="*70)
     print("DASHBOARD: http://localhost:5000/dashboard".center(70))
     print("HOME: http://localhost:5000".center(70))
     print("HEALTH CHECK: http://localhost:5000/health".center(70))
     print("="*70)
     print("FEATURES:".center(70))
-    print("Real-time PSX WebSocket monitoring".center(70))
+    print("Real-time PSX REST monitoring".center(70))
     print("Live dashboard for ALL companies".center(70))
-    print("Email alerts via EmailJS".center(70))
-    print("Instant price updates via SocketIO".center(70))
+    print("Email alerts via Resend".center(70))
     print("="*70 + "\n")
 
 if __name__ == '__main__':
@@ -689,11 +649,6 @@ if __name__ == '__main__':
         db.create_all()
         logger.info("Database initialized")
     
-    # Start background threads
-    broadcast_thread = threading.Thread(target=broadcast_price_updates, daemon=True)
-    broadcast_thread.start()
-    logger.info("Price broadcast thread started")
-    
     alert_thread = threading.Thread(target=check_alerts, daemon=True)
     alert_thread.start()
     logger.info("Alert checker thread started")
@@ -702,9 +657,9 @@ if __name__ == '__main__':
     time.sleep(2)
     print_startup_banner()
     
-    # Run SocketIO app
+    # Run Flask app
     try:
-        socketio.run(app, debug=True, host='0.0.0.0', port=5000, use_reloader=False, allow_unsafe_werkzeug=True)
+        app.run(debug=True, host='0.0.0.0', port=5000, use_reloader=False)
     except KeyboardInterrupt:
         print("\nServer shutting down...")
         sys.exit(0)
