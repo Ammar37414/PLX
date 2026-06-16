@@ -1,0 +1,49 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+*.pyc
+
+# Virtual environments
+.venv/
+venv/
+env/
+ENV/
+
+# Environment secrets — NEVER commit this
+.env
+
+# Database files (Railway uses PostgreSQL in prod, SQLite only for local dev)
+*.db
+*.sqlite
+*.sqlite3
+instance/
+
+# Logs
+*.log
+alerts.log
+PyWhatKit_DB.txt
+
+# OS files
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Editor / IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Debug / test scripts (not needed in production)
+debug_rest.py
+debug_ws.py
+test_api.py
+test_api_v2.py
+
+# Old docs
+RAILWAY_VARIABLES.txt
+implementation_plan.md
+task.md
+GETTING_STARTED.md
+DEPLOY.md

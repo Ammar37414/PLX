@@ -1,0 +1,22 @@
+# Core HTTP & WebSocket
+requests==2.31.0
+websocket-client==1.6.4
+
+# Email via Resend
+resend==0.8.0
+
+# Timezone support
+pytz==2024.1
+
+# Flask web framework + extensions
+Flask==3.0.3
+Flask-SocketIO==5.3.6
+Flask-SQLAlchemy==3.1.1
+
+# SocketIO async backend (required by Flask-SocketIO in threading mode)
+simple-websocket==1.0.0
+
+# WSGI server for production (Railway uses this instead of Flask dev server)
+gunicorn==21.2.0
+gevent==24.2.1
+gevent-websocket==0.10.1
