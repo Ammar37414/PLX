@@ -9,7 +9,7 @@ import logging
 import sys
 import os
 from datetime import datetime, timedelta
-from websocket_monitor import PSXWebSocketMonitor
+from rest_monitor import PSXRestMonitor
 from email_sender import send_alert_email
 
 # Configure logging
@@ -178,9 +178,9 @@ def main():
     logger.info(f"Market Close (reset): {MARKET_CLOSE_HOUR:02d}:{MARKET_CLOSE_MINUTE:02d} PKT")
     logger.info("=" * 70)
     
-    # Initialize WebSocket monitor
-    logger.info("Starting WebSocket monitor...")
-    ws_monitor = PSXWebSocketMonitor()
+    # Initialize REST monitor
+    logger.info("Starting REST monitor...")
+    ws_monitor = PSXRestMonitor()
 
     # Start daily reset scheduler in background
     reset_thread = threading.Thread(target=reset_daily_alerts, daemon=True)
@@ -208,8 +208,7 @@ def main():
             
             # Print status every 5 minutes
             if (datetime.now() - last_status).total_seconds() >= 300:
-                ws_stats = ws_monitor.get_stats()
-                logger.info(f"Status: WebSocket={'Connected' if ws_stats.get('connected') else 'Disconnected'}, "
+                logger.info(f"Status: REST Polling={'Active'}, "
                           f"Tracked={len(stock_tracker)}, Loops={loop_count}")
                 last_status = datetime.now()
             
