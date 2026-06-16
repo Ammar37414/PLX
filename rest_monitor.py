@@ -31,10 +31,10 @@ logger = logging.getLogger(__name__)
 ALERT_THRESHOLD     = float(os.environ.get("ALERT_THRESHOLD",     "4.0"))
 MIN_VALUE_THRESHOLD = float(os.environ.get("MIN_VALUE_THRESHOLD", "20000000"))
 MONITOR_WINDOW      = int(os.environ.get("MONITOR_WINDOW",        "1200"))
-REQUEST_DELAY       = float(os.environ.get("REQUEST_DELAY",       "0.1"))   # between per-sym requests
+REQUEST_DELAY       = float(os.environ.get("REQUEST_DELAY",       "0.25"))  # between per-sym requests
 POLL_INTERVAL_FAST  = float(os.environ.get("POLL_INTERVAL_FAST",  "7"))     # stats refresh (seconds)
 POLL_INTERVAL_FULL  = float(os.environ.get("POLL_INTERVAL_FULL",  "30"))    # full tick sweep (seconds)
-MAX_WORKERS         = int(os.environ.get("REST_WORKERS",           "12"))    # concurrent tick fetchers
+MAX_WORKERS         = int(os.environ.get("REST_WORKERS",           "2"))     # concurrent tick fetchers
 
 ALL_MARKETS = ["REG", "IDX", "FUT", "ODL", "BNB"]
 
@@ -170,6 +170,7 @@ class PSXRestMonitor:
         """
         for market in ALL_MARKETS:
             try:
+                time.sleep(REQUEST_DELAY)
                 resp = requests.get(
                     f"{PSX_BASE}/api/ticks/{market}/{symbol}",
                     headers=HEADERS,
